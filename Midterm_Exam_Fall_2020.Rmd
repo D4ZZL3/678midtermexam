@@ -1,0 +1,168 @@
+---
+title: "Midterm Exam"
+author: "Andrew Dai"
+date: "11/2/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(pwr)
+library(MASS)
+library(pscl)
+library(vcd)
+library(boot)
+library(VGAM)
+library(AER)
+library(rstanarm)
+```
+
+## Instruction
+
+This is your midterm exam that you are expected to work on it alone.  You may NOT  discuss any of the content of your exam with anyone except your instructor. This includes text, chat, email and other online forums.  We expect you to respect and follow the [GRS Academic and Professional Conduct Code](http://www.bu.edu/cas/files/2017/02/GRS-Academic-Conduct-Code-Final.pdf). 
+
+Although you may NOT ask anyone directly, you are allowed to use external resources such as R codes on the Internet.  If you do use someone's code, please make sure you clearly cite the origin of the code.
+
+When you finish, please compile and submit the PDF file and the link to the GitHub repository that contains the entire analysis.
+
+
+## Introduction
+
+In this exam, you will act as both the client and the consultant for the data that you collected in the data collection exercise (20pts).  Please note that you are not allowed to change the data.  The goal of this exam is to demonstrate your ability to perform the statistical analysis that you learned in this class so far.  It is important to note that significance of the analysis is not the main goal of this exam but the focus is on the appropriateness of your approaches.
+
+### Data Description (10pts)
+
+Please explain what your data is about and what the comparison of interest is.  In the process, please make sure to demonstrate that you can load your data properly into R.
+
+```{r }
+
+lol20 <- read.csv("lol20.csv", header= T)
+
+head(lol20)
+
+```
+This data is a count of individual League of Legend games played by me in the month of October, 2020. The comparison of interest is the whether games were played on weekend or weekday and the ith week of the month. 
+
+### EDA (10pts)
+
+Please create one (maybe two) figure(s) that highlights the contrast of interest.  Make sure you think ahead and match your figure with the analysis.  For example, if your model requires you to take a log, make sure you take log in the figure as well.
+
+```{r }
+
+ggplot(lol20)+
+  geom_boxplot(aes(x=wkend,y=total,group=wkend,color=factor(wkend)))+
+  geom_point(aes(x=jitter(wkend,0.6), y=total,color=factor(wkend)))+
+  labs(title = "Games played on Weekend vs Weekday",
+       x= "weekend",
+       y= "Number of games played")
+
+ggplot(lol20)+
+  geom_boxplot(aes(x=week,y=total,group=week,color=factor(week)))+
+  geom_point(aes(x=jitter(week,0.6), y=total,color=factor(week)))+
+  labs(title = "Games played per week",
+       x= "week",
+       y= "Number of games played")
+
+```   
+
+### Power Analysis (10pts)
+
+Please perform power analysis on the project.  Use 80% power, the sample size you used and infer the level of effect size you will be able to detect.  Discuss whether your sample size was enough for the problem at hand.  Please note that method of power analysis should match the analysis.  Also, please clearly state why you should NOT use the effect size from the fitted model.
+
+```{r }
+
+# sample size = 8
+pwr.t.test(n=8,power=0.8,sig.level=0.05,NULL,type = "two.sample")
+
+# d = 0.8
+pwr.t.test(d=0.8,power=0.8,sig.level=0.05,NULL,type = "two.sample")
+
+```
+
+The effect size is 1.5 for 80% power at a significance level = 0.05, which is really large. The sample size is not enough for the problem we are looking at, even if we wanted to find a large effect size of d=0.8, we would need at least 25 samples. If d is bigger than 1, the difference between two means is larger than one standard deviation.
+
+We should not use the effect size from the fitted model because the results could be significant with just 8 samples (the model saying that there is a difference between H0 and H1). However, the true effect size, which is much smaller, would not give us significant result (there is no difference between H0 and H1). Two types of error arise from underpowered studies: 1) results deemed significant by the model will actually be bigger than the true effect and 2) the direction of the difference is wrong yet still significant. 
+
+
+### Modeling (10pts)
+
+Please pick a regression model that best fits your data and fit your model.  Please make sure you describe why you decide to choose the model. Also, if you are using GLM, make sure you explain your choice of link function as well.
+```{r }
+# Poisson GLM Regression
+
+fit1 <- glm(total~wkend+week,family="poisson"(link="log"),data=lol20)
+
+#negative binom
+
+fit2 <- glm.nb(total~wkend+week,data=lol20)
+
+#zeroinfl
+
+fit3 <- zeroinfl(total~wkend+week,data=lol20)
+
+```
+We begin by look at poisson regression because the type of data is count, so it fits the definition of a Poisson distribution. I will use a log link function because it allows our response variable to take on a Poisson distribution and the relationship between response and predictor variables are not in the simple linear form. 
+
+### Validation (10pts)
+
+Please perform a necessary validation and argue why your choice of the model is appropriate.  
+
+```{r }
+
+plot(predict(fit1),resid(fit1), main="Poisson Predicted vs Resids")
+
+# the residuals appear to be underdispersed 
+
+vcd::rootogram(lol20$total, predict(fit1), scale = "raw")
+
+plot(predict(fit2),resid(fit2), main="Poisson Predicted vs Resids")
+
+# still out of 2 sd band
+vcd::rootogram(lol20$total, predict(fit2), scale = "raw")
+
+plot(predict(fit3),resid(fit3), main="Poisson Predicted vs Resids")
+
+# The zero-inflated model seems to fit our data better.
+
+vcd::rootogram(lol20$total, predict(fit3), scale = "raw")
+```
+This model is appropriate because the residuals are centered around 0 and within +/- 2 standard deviations. The rootogram also portrays the frequency fit of the predicted values, which appears better than the rootogram of poisson regression and the negative binomial model.
+
+### Inference (10pts)
+
+Based on the result so far please perform statistical inference to compare the comparison of interest.
+
+```{r }
+
+summary(fit3)
+confint(fit3)
+
+```
+
+
+### Discussion (10pts)
+
+Please clearly state your conclusion and the implication of the result.
+
+In our zero-inflated model, there is not a significant relationship between number of games played and whether it is a weekend or weekday (p=0.995). Also, there is not a significant relationship between number of games played and weeks (p=0.542). There is not much that our results imply- week and weekday are not statistically significant predictors of number of games played. 
+
+If we look at the confidence intervals for our zero-inflated model
+
+                        2.5 %     97.5 %
+zero_(Intercept)  -4.38559006  2.2441029
+zero_wkend        -2.64266450  2.6250016
+zero_week         -1.56770100  0.8233077
+
+The sign varies from positive to negative indicating Type S error. 
+
+### Limitations and future opportunity. (10pts)
+
+Please list concerns about your analysis.  Also, please state how you might go about fixing the problem in your future study.
+
+So I see two main concerns with our analysis. First is that there are no statistically significant results. Poisson regression would have returned "week" as a statistically significant result, but the model did not fit our data. Second, the experimental comparison is underpowered. The experiment's effect size is 1.5 sd while the true effect size is actually much smaller. Our data just doesn't provide enough information say much of anything. I would change two things about my study: 1) increase sample size to make the study's comparison more powerful and 2) change my predictors (like instead of weekend or week, I think a better predictor of number of games played would be something like number of hours spent on HW).
+
+### Comments or questions
+If you have any comments or questions, please write them here.
+
+I was trying to incorporate more simulations (like bootstrap and posterior prediction), but I found it difficult to specify in my code.
